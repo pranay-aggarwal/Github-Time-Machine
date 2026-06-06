@@ -1,0 +1,36 @@
+@import "@xyflow/react/dist/style.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background: #f8f7f3;
+  color: #15171a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(216, 213, 202, 0.35) 1px, transparent 1px),
+    linear-gradient(rgba(216, 213, 202, 0.35) 1px, transparent 1px),
+    #f8f7f3;
+  background-size: 36px 36px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.react-flow__node {
+  border: 1px solid #d8d5ca;
+  border-radius: 8px;
+  color: #15171a;
+  font-size: 12px;
+  max-width: 210px;
+}

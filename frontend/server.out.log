@@ -1,0 +1,14 @@
+
+> github-time-machine-frontend@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.56.1:3000
+
+ ✓ Starting...
+ ✓ Ready in 4.6s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.6s (876 modules)
+ GET / 200 in 5694ms
+ ✓ Compiled in 1408ms (398 modules)
