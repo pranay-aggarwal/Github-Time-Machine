@@ -36,12 +36,46 @@ export type TimelineResponse = {
   events: Array<{ date: string; title: string; summary: string; evidence: Evidence[]; category?: string | null; confidence?: number | null }>;
 };
 
-export type GraphResponse = {
-  nodes: Array<{ id: string; position: { x: number; y: number }; data: { label: string } }>;
-  edges: Array<{ id: string; source: string; target: string; label: string; animated?: boolean }>;
+export type ActivityResponse = {
+  total_commits: number;
+  active_days: number;
+  has_hour_data: boolean;
+  commits_with_hour: number;
+  by_date: Array<{ date: string; count: number }>;
+  by_hour: Array<{ hour: number; count: number }>;
+  top_dates: Array<{ date: string; count: number }>;
+  top_time_windows: Array<{ label: string; start_hour: number; end_hour: number; count: number }>;
+  by_contributor: Array<{ name: string; count: number }>;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+export type GraphResponse = {
+  nodes: Array<{
+    id: string;
+    position: { x: number; y: number };
+    className?: string;
+    style?: Record<string, string | number>;
+    data: {
+      label: string;
+      type?: string;
+      summary?: string;
+      evidenceCount?: number;
+      evidenceIds?: string[];
+      color?: string;
+      properties?: Record<string, unknown>;
+    };
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label: string;
+    animated?: boolean;
+    style?: Record<string, string | number>;
+    data?: { relationship?: string; label?: string; evidenceIds?: string[]; properties?: Record<string, unknown> };
+  }>;
+};
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8080";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -87,4 +121,8 @@ export function getGraph(repoId: string) {
 
 export function getTimeline(repoId: string) {
   return api<TimelineResponse>(`/timeline?repo_id=${encodeURIComponent(repoId)}`);
+}
+
+export function getActivity(repoId: string) {
+  return api<ActivityResponse>(`/activity?repo_id=${encodeURIComponent(repoId)}`);
 }

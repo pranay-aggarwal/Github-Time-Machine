@@ -70,7 +70,7 @@ def test_overview_question_summarizes_repo_graph(tmp_path: Path):
 
     assert "demo/time-machine" in answer.answer
     assert "repository historian" in answer.answer
-    assert "detected technologies" in answer.answer
+    assert "uses or references" in answer.answer
 
 
 def test_timeline_includes_categories_and_module_activity(tmp_path: Path):
@@ -113,6 +113,60 @@ def test_expertise_question_ranks_developers(tmp_path: Path):
 
     assert "Mira Shah" in answer.answer
     assert "matching commits" in answer.answer
+
+
+def test_contributor_question_lists_developers(tmp_path: Path):
+    store = Store(tmp_path / "time_machine.sqlite3")
+    build_seed_graph(store)
+
+    answer = answer_question(store, "demo__time-machine", "Who are the contributors?", None, "test-model")
+
+    assert "Mira Shah" in answer.answer
+    assert "Noah Kim" in answer.answer
+    assert "Ava Patel" in answer.answer
+    assert "analyzed commits" in answer.answer
+    assert answer.confidence > 0.5
+
+
+def test_broad_repo_understanding_uses_graph_snapshot(tmp_path: Path):
+    store = Store(tmp_path / "time_machine.sqlite3")
+    build_seed_graph(store)
+
+    answer = answer_question(store, "demo__time-machine", "What do you understand about this repo?", None, "test-model")
+
+    assert "repository historian" in answer.answer
+    assert "contributors" in answer.answer
+    assert "detected technologies" in answer.answer
+    assert answer.confidence > 0.5
+
+
+def test_what_does_this_do_avoids_readme_metadata_dump(tmp_path: Path):
+    store = Store(tmp_path / "time_machine.sqlite3")
+    repo_id = "demo__parking"
+    store.upsert_repository(repo_id, "pranay/parking_app", "https://github.com/pranay/parking_app", "main", {"commits": 4})
+    store.add_node(
+        repo_id,
+        f"profile:{repo_id}",
+        "ProjectProfile",
+        "Project profile",
+        {
+            "summary": "Vehicle Parking App **MAD 2 Project - IITM BS Degree Program** - **Student Name:** Pranay Aggarwal - **Student Roll Number:** 24F3004524 - **Term:** Sep 2025",
+        },
+    )
+    store.add_node(repo_id, "module:frontend", "Module", "frontend", {"churn": 8, "commits": 2})
+    store.add_node(repo_id, "module:backend", "Module", "backend", {"churn": 7, "commits": 2})
+    store.add_node(repo_id, "technology:flask", "Technology", "Flask", {})
+    store.add_node(repo_id, "technology:sqlite", "Technology", "SQLite", {})
+    store.add_node(repo_id, "technology:sqlalchemy", "Technology", "SQLAlchemy", {})
+
+    answer = answer_question(store, repo_id, "what does this do", None, "test-model")
+
+    assert "vehicle parking web application" in answer.answer.lower()
+    assert "frontend" in answer.answer
+    assert "backend" in answer.answer
+    assert "Student Name" not in answer.answer
+    assert "Roll Number" not in answer.answer
+    assert "Sep 2025" not in answer.answer
 
 
 def test_generic_no_evidence_answer_is_not_keyword_slop(tmp_path: Path):

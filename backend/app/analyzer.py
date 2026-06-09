@@ -115,6 +115,7 @@ class CommitRecord:
     message: str
     author: str
     authored_date: str
+    authored_at: str
     files: list[str]
     stats: dict[str, int]
 
@@ -264,6 +265,7 @@ def collect_commits(repo: Repo, max_commits: int, rev: str | None = None) -> lis
                 message=commit.message.strip(),
                 author=commit.author.name or commit.author.email or "Unknown",
                 authored_date=commit.authored_datetime.date().isoformat(),
+                authored_at=commit.authored_datetime.isoformat(),
                 files=files,
                 stats={
                     "files": len(files),
@@ -433,7 +435,7 @@ def build_repo_graph(
             commit_node,
             "Commit",
             commit.short_sha,
-            {"message": commit.message, "date": commit.authored_date, **commit.stats},
+            {"message": commit.message, "date": commit.authored_date, "authored_at": commit.authored_at, **commit.stats},
         )
         store.add_evidence(
             repo_id,
@@ -537,12 +539,12 @@ def build_seed_graph(store: Store, repo_id: str = "demo__time-machine") -> None:
     )
 
     fixtures = [
-        ("a1b2c3d", "2024-02-18", "Mira Shah", "Add Redis-backed cache for repository analysis jobs", "backend", "Redis", "14", "21"),
-        ("b2c3d4e", "2024-03-04", "Noah Kim", "Move graph traversal into NetworkX service", "graph", "NetworkX", "18", "27"),
-        ("c3d4e5f", "2024-03-16", "Ava Patel", "Add React Flow evidence explorer", "frontend", "React", "22", "33"),
+        ("a1b2c3d", "2024-02-18", "10", "Mira Shah", "Add Redis-backed cache for repository analysis jobs", "backend", "Redis", "14", "21"),
+        ("b2c3d4e", "2024-03-04", "14", "Noah Kim", "Move graph traversal into NetworkX service", "graph", "NetworkX", "18", "27"),
+        ("c3d4e5f", "2024-03-16", "20", "Ava Patel", "Add React Flow evidence explorer", "frontend", "React", "22", "33"),
     ]
 
-    for commit, date, author, message, module, tech, issue, pr in fixtures:
+    for commit, date, hour, author, message, module, tech, issue, pr in fixtures:
         commit_node = f"commit:{commit}"
         module_node = module_id(repo_id, module)
         tech_node = technology_id(repo_id, tech)
@@ -551,7 +553,7 @@ def build_seed_graph(store: Store, repo_id: str = "demo__time-machine") -> None:
         pr_node = f"pr:{pr}"
         decision_node = f"decision:{stable_id(repo_id, tech)}"
 
-        store.add_node(repo_id, commit_node, "Commit", commit, {"message": message, "date": date})
+        store.add_node(repo_id, commit_node, "Commit", commit, {"message": message, "date": date, "authored_at": f"{date}T{hour}:00:00+00:00"})
         store.add_node(repo_id, module_node, "Module", module, {"churn": 12})
         store.add_node(repo_id, tech_node, "Technology", tech, {})
         store.add_node(repo_id, developer_node, "Developer", author, {"commits": 2})

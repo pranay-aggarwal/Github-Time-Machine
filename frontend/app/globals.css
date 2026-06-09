@@ -27,10 +27,100 @@ input {
   font: inherit;
 }
 
+main,
+main * {
+  min-width: 0;
+}
+
+main p,
+main h1,
+main h2,
+main h3,
+main a,
+main button,
+main span,
+main dd,
+main dt,
+main li,
+main div {
+  overflow-wrap: anywhere;
+}
+
+button {
+  min-width: 0;
+}
+
 .react-flow__node {
   border: 1px solid #d8d5ca;
   border-radius: 8px;
   color: #15171a;
   font-size: 12px;
   max-width: 210px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.react-flow__node-default {
+  padding: 10px 12px;
+  min-width: 150px;
+  max-width: 210px;
+  box-shadow: 0 8px 22px rgba(21, 23, 26, 0.08);
+}
+
+.react-flow__edge-text {
+  font-size: 10px;
+  fill: #15171a;
+}
+
+.graph-canvas .react-flow {
+  background: #020617;
+}
+
+.graph-canvas .react-flow__pane {
+  background: #020617;
+}
+
+.graph-canvas .react-flow__node-default {
+  background: #f8fafc;
+  color: #0f172a;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+}
+
+.graph-canvas .react-flow__edge-path {
+  stroke: #94a3b8;
+}
+
+.graph-canvas .react-flow__edge-text {
+  fill: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: #020617;
+  stroke-width: 4px;
+}
+
+.graph-canvas .react-flow__edge-textbg {
+  fill: transparent;
+  stroke: transparent;
+}
+
+.graph-canvas .react-flow__controls {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.graph-canvas .react-flow__controls-button {
+  background: #111827;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+.graph-canvas .react-flow__minimap {
+  background: #0f172a;
+  border: 1px solid #334155;
+}
+
+.writing-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
 }

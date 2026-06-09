@@ -62,6 +62,40 @@ class TimelineResponse(BaseModel):
     events: List[TimelineEvent]
 
 
+class ActivityByDate(BaseModel):
+    date: str
+    count: int
+
+
+class ActivityByHour(BaseModel):
+    hour: int
+    count: int
+
+
+class ActivityTimeWindow(BaseModel):
+    label: str
+    start_hour: int
+    end_hour: int
+    count: int
+
+
+class ActivityContributor(BaseModel):
+    name: str
+    count: int
+
+
+class ActivityResponse(BaseModel):
+    total_commits: int
+    active_days: int
+    has_hour_data: bool
+    commits_with_hour: int
+    by_date: List[ActivityByDate]
+    by_hour: List[ActivityByHour]
+    top_dates: List[ActivityByDate]
+    top_time_windows: List[ActivityTimeWindow]
+    by_contributor: List[ActivityContributor]
+
+
 class SummaryResponse(BaseModel):
     repo_id: str
     name: str

@@ -7,8 +7,9 @@
    - Network:      http://192.168.56.1:3000
 
  ✓ Starting...
- ✓ Ready in 4.6s
+ ✓ Ready in 3.4s
  ○ Compiling / ...
- ✓ Compiled / in 4.6s (876 modules)
- GET / 200 in 5694ms
- ✓ Compiled in 1408ms (398 modules)
+ ✓ Compiled / in 5.7s (892 modules)
+ GET / 200 in 6534ms
+ GET / 200 in 1058ms
+ ✓ Compiled in 1110ms (406 modules)

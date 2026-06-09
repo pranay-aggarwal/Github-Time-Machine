@@ -6,12 +6,14 @@ from uuid import uuid4
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from .activity import commit_activity
 from .analyzer import build_repo_graph, build_seed_graph, clone_or_refresh
 from .config import get_settings
 from .graph import react_flow_graph
 from .models import (
     AnalyzeRequest,
     AnalyzeResponse,
+    ActivityResponse,
     ChatRequest,
     ChatResponse,
     GraphResponse,
@@ -96,6 +98,13 @@ def timeline(repo_id: str) -> TimelineResponse:
     if not store.get_repository(repo_id):
         raise HTTPException(status_code=404, detail="Repository not found")
     return TimelineResponse(events=timeline_events(store, repo_id))
+
+
+@app.get("/activity", response_model=ActivityResponse)
+def activity(repo_id: str) -> ActivityResponse:
+    if not store.get_repository(repo_id):
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return ActivityResponse(**commit_activity(store, repo_id))
 
 
 def run_analysis(job_id: str, repo_url: str) -> None:

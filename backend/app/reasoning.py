@@ -34,17 +34,19 @@ def confidence_from_evidence(count: int) -> float:
 
 def answer_question(store: Store, repo_id: str, question: str, openai_api_key: str | None, model: str) -> ChatResponse:
     context = build_context(store, repo_id, question)
+    if openai_api_key and has_repo_understanding(context):
+        ai_answer = answer_with_llm(question, context, openai_api_key, model)
+        if ai_answer:
+            return ai_answer
+
     deterministic = answer_from_graph(store, repo_id, question, context)
     if deterministic:
         return deterministic
 
     if not context["evidence"]:
+        if has_repo_understanding(context):
+            return repo_understanding_summary_answer(context)
         return no_evidence_answer(context)
-
-    if openai_api_key:
-        ai_answer = answer_with_llm(question, context, openai_api_key, model)
-        if ai_answer:
-            return ai_answer
 
     return evidence_summary_answer(context)
 
@@ -58,6 +60,7 @@ def build_context(store: Store, repo_id: str, question: str) -> dict[str, Any]:
     matched_nodes = rank_nodes(nodes, terms)
     expanded_node_ids = expand_node_ids({node["id"] for node in matched_nodes[:12]}, edges)
     expanded_nodes = [node for node in nodes if node["id"] in expanded_node_ids]
+    snapshot = repo_understanding_snapshot(repo, nodes, edges)
     return {
         "question": question,
         "terms": terms,
@@ -66,6 +69,7 @@ def build_context(store: Store, repo_id: str, question: str) -> dict[str, Any]:
         "edges": edges,
         "matched_nodes": matched_nodes,
         "expanded_nodes": expanded_nodes,
+        "repo_understanding": snapshot,
         "evidence": dedupe_evidence(evidence_rows[:12]),
     }
 
@@ -74,6 +78,8 @@ def answer_from_graph(store: Store, repo_id: str, question: str, context: dict[s
     lowered = question.lower()
     if asks_overview(lowered):
         return answer_overview(context)
+    if asks_about_contributors(lowered):
+        return answer_contributors_question(context)
     if asks_about_technology(lowered):
         return answer_technology_question(store, repo_id, lowered, context)
     if asks_why(lowered):
@@ -88,7 +94,52 @@ def answer_from_graph(store: Store, repo_id: str, question: str, context: dict[s
 
 
 def asks_overview(question: str) -> bool:
-    return any(phrase in question for phrase in ["what is this", "what does this", "what is the project", "summarize", "overview"])
+    return any(phrase in question for phrase in ["what is this", "what does this", "what is the project", "what does it do", "what does this do", "summarize", "overview"])
+
+
+def has_repo_understanding(context: dict[str, Any]) -> bool:
+    snapshot = context.get("repo_understanding", {})
+    return any(snapshot.get(key) for key in ["profile_summary", "technologies", "modules", "contributors", "architecture_decisions"])
+
+
+def repo_understanding_snapshot(repo: dict[str, Any] | None, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    profiles = [node for node in nodes if node["type"] == "ProjectProfile"]
+    raw_profile_summary = profiles[0]["properties"].get("summary", "") if profiles else ""
+    profile_summary = clean_profile_summary(raw_profile_summary)
+    edge_counts = Counter(edge["source_id"] for edge in edges if edge["type"] == "AUTHOR_OF")
+    contributors = []
+    for node in [item for item in nodes if item["type"] == "Developer"]:
+        commits = edge_counts.get(node["id"], int(node["properties"].get("commits", 0)))
+        contributors.append({"name": node["label"], "analyzed_commits": commits})
+    contributors = sorted(contributors, key=lambda item: (-int(item["analyzed_commits"]), item["name"].lower()))[:12]
+
+    modules = [
+        {
+            "name": node["label"],
+            "churn": int(node["properties"].get("churn", 0)),
+            "commits": int(node["properties"].get("commits", 0)),
+        }
+        for node in top_nodes(nodes, "Module", "churn", limit=12)
+    ]
+    technologies = sorted({node["label"] for node in nodes if node["type"] == "Technology"})
+    decisions = [
+        {
+            "title": node["label"],
+            "date": node["properties"].get("date", ""),
+            "summary": node["properties"].get("summary", ""),
+        }
+        for node in nodes
+        if node["type"] == "ArchitectureDecision"
+    ][:12]
+    return {
+        "repo_name": (repo or {}).get("name"),
+        "metrics": (repo or {}).get("metrics", {}),
+        "profile_summary": profile_summary,
+        "technologies": technologies[:20],
+        "modules": modules,
+        "contributors": contributors,
+        "architecture_decisions": decisions,
+    }
 
 
 def asks_why(question: str) -> bool:
@@ -102,6 +153,10 @@ def asks_about_technology(question: str) -> bool:
 
 def asks_about_expertise(question: str) -> bool:
     return any(phrase in question for phrase in ["who knows", "expert", "expertise", "contributed most", "worked most"])
+
+
+def asks_about_contributors(question: str) -> bool:
+    return any(phrase in question for phrase in ["who are the contributors", "list contributors", "contributors", "who contributed", "developer list", "developers"])
 
 
 def asks_about_complexity(question: str) -> bool:
@@ -118,16 +173,14 @@ def answer_overview(context: dict[str, Any]) -> ChatResponse:
     modules = top_nodes(context["nodes"], "Module", "churn", limit=5)
     tech = sorted(node["label"] for node in context["nodes"] if node["type"] == "Technology")[:8]
     metrics = repo.get("metrics", {})
-    profile_summary = profiles[0]["properties"].get("summary") if profiles else ""
+    profile_summary = clean_profile_summary(profiles[0]["properties"].get("summary", "")) if profiles else ""
+    purpose = project_purpose_sentence(repo.get("name", "This repository"), profile_summary, tech, [node["label"] for node in modules])
     parts = []
-    if profile_summary:
-        parts.append(f"{repo.get('name', 'This repository')} appears to be: {profile_summary}")
-    else:
-        parts.append(f"{repo.get('name', 'This repository')} has {metrics.get('commits', 0)} analyzed commits")
+    parts.append(purpose or f"{repo.get('name', 'This repository')} has {metrics.get('commits', 0)} analyzed commits")
     if modules:
-        parts.append(f"main active modules appear to be {format_list([node['label'] for node in modules])}")
+        parts.append(f"The main active areas are {format_list([node['label'] for node in modules])}")
     if tech:
-        parts.append(f"detected technologies include {format_list(tech)}")
+        parts.append(f"It uses or references {format_list(tech)}")
     answer = ". ".join(parts) + "."
     return ChatResponse(
         answer=answer,
@@ -260,6 +313,40 @@ def answer_expertise_question(context: dict[str, Any]) -> ChatResponse:
     )
 
 
+def answer_contributors_question(context: dict[str, Any]) -> ChatResponse:
+    developers = [node for node in context["nodes"] if node["type"] == "Developer"]
+    if not developers:
+        return ChatResponse(
+            answer="I could not find contributor evidence in the analyzed graph.",
+            reasoning_chain=["Detected a contributors question.", "Checked Developer nodes.", "No Developer nodes were available."],
+            evidence=[],
+            confidence=confidence_from_evidence(0),
+        )
+
+    author_edges = [edge for edge in context["edges"] if edge["type"] == "AUTHOR_OF"]
+    edge_counts = Counter(edge["source_id"] for edge in author_edges)
+    ranked = sorted(
+        developers,
+        key=lambda node: (edge_counts.get(node["id"], 0), int(node["properties"].get("commits", 0)), node["label"].lower()),
+        reverse=True,
+    )
+    labels = []
+    for developer in ranked[:8]:
+        count = edge_counts.get(developer["id"], int(developer["properties"].get("commits", 0)))
+        labels.append(f"{developer['label']} ({count} analyzed commits)")
+
+    return ChatResponse(
+        answer=f"The contributors I found in the analyzed commit graph are {format_list(labels)}.",
+        reasoning_chain=[
+            "Detected a contributors question.",
+            "Read Developer nodes from the graph.",
+            "Counted AUTHOR_OF edges to rank contributors by analyzed commits.",
+        ],
+        evidence=context["evidence"],
+        confidence=0.72 if author_edges else 0.5,
+    )
+
+
 def answer_complexity_question(context: dict[str, Any]) -> ChatResponse:
     ranked = top_nodes(context["nodes"], "Module", "churn", limit=5)
     if not ranked:
@@ -314,12 +401,17 @@ def answer_with_llm(question: str, context: dict[str, Any], openai_api_key: str,
         payload = {
             "question": question,
             "repo": context["repo"],
+            "repo_understanding": context["repo_understanding"],
             "matched_graph_nodes": compact_nodes(context["expanded_nodes"][:40]),
             "evidence": [item.model_dump() for item in evidence],
             "rules": [
-                "Answer only from supplied graph nodes and evidence.",
+                "Answer only from supplied repo_understanding, graph nodes, and evidence.",
+                "Use repo_understanding for broad questions about contributors, modules, tech stack, project purpose, and architecture.",
+                "Write naturally and directly. Do not expose internal retrieval steps.",
+                "For 'what does this do' or similar questions, explain the application purpose and main capabilities first; do not repeat assignment metadata, student names, roll numbers, or term details unless explicitly asked.",
                 "When motivation is not explicit, provide a clearly labeled 'Most likely reason' grounded in the evidence.",
-                "Do not mention keyword extraction.",
+                "If the graph has relevant facts but no evidence snippets, say it is based on analyzed graph metadata.",
+                "If the supplied context is not enough, say what is missing instead of guessing.",
                 "Return strict JSON with answer, reasoning_chain, confidence.",
             ],
         }
@@ -358,6 +450,41 @@ def evidence_summary_answer(context: dict[str, Any]) -> ChatResponse:
     )
 
 
+def repo_understanding_summary_answer(context: dict[str, Any]) -> ChatResponse:
+    snapshot = context["repo_understanding"]
+    parts = []
+    purpose = project_purpose_sentence(
+        snapshot.get("repo_name") or "This repository",
+        snapshot.get("profile_summary", ""),
+        snapshot.get("technologies", []),
+        [item["name"] for item in snapshot.get("modules", [])],
+    )
+    if purpose:
+        parts.append(purpose)
+    if snapshot.get("contributors"):
+        contributors = [f"{item['name']} ({item['analyzed_commits']} analyzed commits)" for item in snapshot["contributors"][:6]]
+        parts.append(f"contributors found in the analyzed graph include {format_list(contributors)}")
+    if snapshot.get("technologies"):
+        parts.append(f"detected technologies include {format_list(snapshot['technologies'][:8])}")
+    if snapshot.get("modules"):
+        modules = [f"{item['name']} (churn {item['churn']})" for item in snapshot["modules"][:5]]
+        parts.append(f"active modules include {format_list(modules)}")
+    if snapshot.get("architecture_decisions"):
+        decisions = [item["title"] for item in snapshot["architecture_decisions"][:4]]
+        parts.append(f"architecture events include {format_list(decisions)}")
+
+    return ChatResponse(
+        answer=". ".join(parts) + ".",
+        reasoning_chain=[
+            "Used the analyzed repository graph rather than keyword-only evidence.",
+            "Read project profile, contributor, module, technology, and architecture nodes.",
+            "Summarized only facts present in the graph metadata.",
+        ],
+        evidence=context["evidence"],
+        confidence=0.62,
+    )
+
+
 def infer_likely_reason(context: dict[str, Any], evidence: list[Evidence]) -> str:
     text = " ".join([item.title + " " + item.snippet for item in evidence]).lower()
     profile_nodes = [node for node in context["nodes"] if node["type"] == "ProjectProfile"]
@@ -377,6 +504,58 @@ def infer_likely_reason(context: dict[str, Any], evidence: list[Evidence]) -> st
     if evidence:
         return f"to support the change described by {format_list([item.title for item in evidence[:3]])}; the exact motivation is inferred because the evidence does not state it directly."
     return "there is not enough evidence to infer a likely reason confidently."
+
+
+def clean_profile_summary(summary: str) -> str:
+    if not summary:
+        return ""
+    cleaned_parts = []
+    for part in re.split(r"\s+(?=(?:[-*#]|\*\*|[A-Z][A-Za-z ]{2,}:))", summary):
+        text = strip_markdown(part).strip(" -:;")
+        lowered = text.lower()
+        if not text:
+            continue
+        if any(noise in lowered for noise in ["student name", "student roll", "roll number", "term:", "iitm bs degree", "mad 2 project"]):
+            continue
+        cleaned_parts.append(text)
+    cleaned = " ".join(cleaned_parts).strip()
+    return re.sub(r"\s+", " ", cleaned)[:500]
+
+
+def strip_markdown(text: str) -> str:
+    text = re.sub(r"[*_`>#]+", "", text)
+    text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
+    return text
+
+
+def project_purpose_sentence(repo_name: str, profile_summary: str, technologies: list[str], modules: list[str]) -> str:
+    source = f"{repo_name} {profile_summary}".lower()
+    tech_text = " ".join(technologies).lower()
+    module_text = " ".join(modules).lower()
+
+    if "parking" in source:
+        base = f"{repo_name} is a vehicle parking web application."
+        details = []
+        if any(word in module_text for word in ["frontend", "backend"]):
+            details.append("It has separate frontend and backend areas")
+        if any(word in tech_text for word in ["flask", "sqlalchemy", "sqlite"]):
+            details.append("the backend appears to handle application logic and database-backed parking data")
+        if any(word in tech_text for word in ["redis", "celery"]):
+            details.append("Redis/Celery suggest background jobs or caching support")
+        return base + (" " + "; ".join(details) if details else "")
+
+    if profile_summary:
+        return f"{repo_name} is {profile_summary.rstrip('.')}"
+
+    if technologies or modules:
+        bits = []
+        if modules:
+            bits.append(f"active areas include {format_list(modules[:4])}")
+        if technologies:
+            bits.append(f"detected technologies include {format_list(technologies[:6])}")
+        return f"{repo_name} is an analyzed software repository; " + "; ".join(bits)
+
+    return ""
 
 
 def no_evidence_answer(context: dict[str, Any]) -> ChatResponse:
